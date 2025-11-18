@@ -1,0 +1,61 @@
+# .github/workflows/deploy.yml – Bulletproof React-to-Pages Pipeline
+name: Deploy developerFolio to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]  # Triggers on either – no more branch drama
+  workflow_dispatch:  # Manual "Re-run" button in Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write  # For OIDC auth – zero secrets needed for token
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for clean deploys
+
+      - name: Setup Node.js (v20 LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'  # Caches node_modules – 5x faster rebuilds
+          cache-dependency-path: package-lock.json
+
+      - name: Install Dependencies (CI Mode)
+        run: npm ci --prefer-offline  # Faster + offline-first
+
+      - name: Build Static Site
+        run: npm run build
+        env:
+          REACT_APP_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Built-in safe token
+          GITHUB_USERNAME: Bharatdwaj3
+          USE_GITHUB_DATA: true
+          NODE_ENV: production  # Optimizes for prod (minification, tree-shaking)
+
+      - name: Verify Build Output
+        run: ls -la build/  # Debug: Logs built files (check Actions for errors)
+
+  deploy:
+    needs: build  # Serial: Build first, then deploy
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './build'  # Deploys /build as root
+
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4  # Official Pages deploy – auto-CDN
